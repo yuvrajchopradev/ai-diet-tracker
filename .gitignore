@@ -153,3 +153,5 @@ venv.bak/
 .mypy_cache/
 
 .idea/*
+
+diet.db

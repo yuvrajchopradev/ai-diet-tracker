@@ -3,6 +3,8 @@ from app.schemas.food import FoodResponse, FoodCreate
 from sqlalchemy.orm import Session
 from app.dependencies import get_db
 from app.models.food_entry import FoodEntry
+from typing import List
+from datetime import date
 
 router = APIRouter(prefix="/food", tags=["food"])
 
@@ -22,3 +24,19 @@ def create_food_entry(
     db.refresh(entry)
 
     return entry
+
+@router.get("/", response_model=List[FoodResponse])
+def get_all_food_entries(db: Session = Depends(get_db)):
+    return db.query(FoodEntry).all()
+
+@router.get("/by-date", response_model=List[FoodResponse])
+def get_food_by_date(
+    day: date,
+    db: Session = Depends(get_db)
+):
+    return (
+        db.query(FoodEntry)
+        .filter(FoodEntry.created_at >= day)
+        .filter(FoodEntry.created_at < day.replace(day = day + 1))
+        .all()
+    )
