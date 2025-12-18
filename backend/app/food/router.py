@@ -5,18 +5,23 @@ from app.dependencies import get_db
 from app.models.food_entry import FoodEntry
 from typing import List
 from datetime import date
+from app.models.user import User
+from app.auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/food", tags=["food"])
 
 @router.post("/", response_model=FoodResponse)
 def create_food_entry(
     food: FoodCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     entry = FoodEntry(
+        user_id = current_user.id,
         food_text = food.food_text,
         calories = food.calories,
-        protein = food.protein
+        protein = food.protein,
+        date = food.date
     )
 
     db.add(entry)
