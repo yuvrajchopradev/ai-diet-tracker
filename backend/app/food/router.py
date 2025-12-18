@@ -7,6 +7,7 @@ from typing import List
 from datetime import date
 from app.models.user import User
 from app.auth.dependencies import get_current_user
+from sqlalchemy import extract
 
 router = APIRouter(prefix="/food", tags=["food"])
 
@@ -34,14 +35,52 @@ def create_food_entry(
 def get_all_food_entries(db: Session = Depends(get_db)):
     return db.query(FoodEntry).all()
 
-@router.get("/by-date", response_model=List[FoodResponse])
-def get_food_by_date(
+@router.get("/months")
+def get_food_months(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    results = (
+        db.query(
+            extract("year", FoodEntry.date).label("year"),
+            extract("month", FoodEntry.date).label("month")
+        )
+        .filter(FoodEntry.user_id == current_user.id)
+        .distinct()
+        .order_by("year", "month")
+        .all()
+    )
+
+    return [
+        {"year": int(r.year), "month": (r.month)}
+        for r in results
+    ]
+
+@router.get("/dates")
+def get_food_dates(year: int, month: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    results = (
+        db.query(FoodEntry.date)
+        .filter(
+            FoodEntry.user_id == current_user.id,
+            extract("year", FoodEntry.date) == year,
+            extract("month", FoodEntry.date) == month
+        )
+        .distinct()
+        .order_by(FoodEntry.date)
+        .all()
+    )
+
+    return [r.date for r in results]
+
+@router.get("/day", response_model=List[FoodResponse])
+def get_food_for_day(
     day: date,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     return (
         db.query(FoodEntry)
-        .filter(FoodEntry.created_at >= day)
-        .filter(FoodEntry.created_at < day.replace(day = day + 1))
+        .filter(
+            FoodEntry.user_id == current_user.id,
+            FoodEntry.date == day
+        )
+        .order_by(FoodEntry.id)
         .all()
     )
