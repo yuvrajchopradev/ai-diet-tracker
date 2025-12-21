@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from app.schemas.food import FoodResponse, FoodCreate
 from sqlalchemy.orm import Session
 from app.dependencies import get_db
@@ -7,7 +7,7 @@ from typing import List
 from datetime import date
 from app.models.user import User
 from app.auth.dependencies import get_current_user
-from sqlalchemy import extract
+from sqlalchemy import func
 
 router = APIRouter(prefix="/food", tags=["food"])
 
@@ -39,8 +39,8 @@ def get_all_food_entries(db: Session = Depends(get_db)):
 def get_food_months(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     results = (
         db.query(
-            extract("year", FoodEntry.date).label("year"),
-            extract("month", FoodEntry.date).label("month")
+            func.extract("year", FoodEntry.date).label("year"),
+            func.extract("month", FoodEntry.date).label("month")
         )
         .filter(FoodEntry.user_id == current_user.id)
         .distinct()
@@ -59,8 +59,8 @@ def get_food_dates(year: int, month: int, db: Session = Depends(get_db), current
         db.query(FoodEntry.date)
         .filter(
             FoodEntry.user_id == current_user.id,
-            extract("year", FoodEntry.date) == year,
-            extract("month", FoodEntry.date) == month
+            func.extract("year", FoodEntry.date) == year,
+            func.extract("month", FoodEntry.date) == month
         )
         .distinct()
         .order_by(FoodEntry.date)
@@ -84,3 +84,86 @@ def get_food_for_day(
         .order_by(FoodEntry.id)
         .all()
     )
+
+@router.get("/summary/day")
+def day_summary(
+    date: date = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    result = (
+        db.query(
+            func.coalesce(func.sum(FoodEntry.calories), 0),
+            func.coalesce(func.sum(FoodEntry.protein), 0),
+        )
+        .filter(
+            FoodEntry.user_id == current_user.id,
+            FoodEntry.date == date,
+        )
+        .one()
+    )
+
+    return {
+        "date": date,
+        "total_calories": result[0],
+        "total_protein": result[1],
+    }
+
+@router.get("/summary/month")
+def month_summary(
+    year: int,
+    month: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    result = (
+        db.query(
+            func.coalesce(func.sum(FoodEntry.calories), 0),
+            func.coalesce(func.sum(FoodEntry.protein), 0),
+        )
+        .filter(
+            FoodEntry.user_id == current_user.id,
+            func.extract("year", FoodEntry.date) == year,
+            func.extract("month", FoodEntry.date) == month
+        )
+        .one()
+    )
+
+    return {
+        "year": year,
+        "month": month,
+        "total_calories": result[0],
+        "total_protein": result[1],
+    }
+
+@router.get("/summary/month/days")
+def month_day_breakdown(
+    year: int,
+    month: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    results = (
+        db.query(
+            FoodEntry.date,
+            func.sum(FoodEntry.calories).label("calories"),
+            func.sum(FoodEntry.protein).label("protein"),
+        )
+        .filter(
+            FoodEntry.user_id == current_user.id,
+            func.extract("year", FoodEntry.date) == year,
+            func.extract("month", FoodEntry.date) == month,
+        )
+        .group_by(FoodEntry.date)
+        .order_by(FoodEntry.date)
+        .all()
+    )
+
+    return [
+        {
+            "date": r.date,
+            "total_calories": r.calories,
+            "total_protein": r.protein,
+        }
+        for r in results
+    ]
