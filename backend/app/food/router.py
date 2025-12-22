@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException, status
 from app.schemas.food import FoodResponse, FoodCreate
 from sqlalchemy.orm import Session
 from app.dependencies import get_db
@@ -11,7 +11,7 @@ from sqlalchemy import func
 
 router = APIRouter(prefix="/food", tags=["food"])
 
-@router.post("/", response_model=FoodResponse)
+@router.post("/", response_model=FoodResponse, status_code=status.HTTP_201_CREATED)
 def create_food_entry(
     food: FoodCreate,
     db: Session = Depends(get_db),
@@ -25,9 +25,16 @@ def create_food_entry(
         date = food.date
     )
 
-    db.add(entry)
-    db.commit()
-    db.refresh(entry)
+    try:
+        db.add(entry)
+        db.commit()
+        db.refresh(entry)
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something went wrong"
+        )
 
     return entry
 
